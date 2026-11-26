@@ -363,7 +363,9 @@ function pintar() {
   document.querySelectorAll('#rango button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === F.dias)));
   document.querySelectorAll('#quien button').forEach((b) => b.setAttribute('aria-pressed', String(!F.persona && b.dataset.v === F.quien)));
   $('chip').classList.toggle('on', !!F.persona); $('chipNombre').textContent = F.persona ? (per[F.persona]?.nombre || F.persona) : '';
-  $('estado').textContent = DATOS.ejemplo ? 'Datos de ejemplo: así se verá cuando las apps estén conectadas a tu hoja.' : `Actualizado ${cuando(DATOS.ahora)} · ${num(DATOS.uso.length)} registros en los últimos 120 días.`;
+  $('salir').textContent = DATOS.ejemplo ? 'Conectar mi hoja' : 'Salir';
+  $('salir').classList.toggle('lleno', !!DATOS.ejemplo);
+  $('estado').textContent = DATOS.ejemplo ? 'Estás viendo datos de ejemplo, no los reales. Para ver los de Nicolás y sus estudiantes, toca "Conectar mi hoja".' : `Actualizado ${cuando(DATOS.ahora)} · ${num(DATOS.uso.length)} registros en los últimos 120 días.`;
 
   // fichas
   const activos = new Set(uso.map((u) => u[1])), deQuien = DATOS.personas.filter((p) => (F.persona ? p.id === F.persona : F.quien === 'todos' || p.rol === F.quien));
@@ -457,8 +459,7 @@ document.addEventListener('pointerleave', () => { tip.style.opacity = 0; });
 (() => {
   const g = JSON.parse(guardar.get('ola-panel') || 'null');
   if (g?.url) { $('url').value = g.url; $('conClave').checked = g.clave != null; verClave(); entrar(g.url, g.clave, true); }
-  else if (/[?#&]demo/.test(location.href)) { DATOS = ejemplo(); mostrar(); }
-  else $('puerta').hidden = false;
+  else { DATOS = ejemplo(); mostrar(); } // sin conexión guardada se abre de una vez con datos de ejemplo
 })();
 </script>
 </body>
