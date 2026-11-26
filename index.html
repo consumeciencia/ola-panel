@@ -139,8 +139,11 @@
     <h1>Panel de uso de Ola</h1>
     <p class="nota">Cuánto usan las apps Nicolás y sus estudiantes, y qué hacen en ellas.</p>
     <form id="form" novalidate>
+      <div id="zonaUrl">
       <label for="url">Dirección del Apps Script (termina en /exec)</label>
       <input id="url" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+      </div>
+      <p class="nota" id="notaFija" hidden>Conectado a la hoja de Ola. Solo falta la clave del panel.</p>
       <label class="opcion"><input type="checkbox" id="conClave" checked> <span>Usar clave</span></label>
       <div id="zonaClave">
         <label for="clave">Clave del panel (CLAVE_PANEL, en la pestaña Config de la hoja)</label>
@@ -262,6 +265,9 @@ const fecha = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate(
 const guardar = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
 const num = (n) => n.toLocaleString('es-CO');
 const mins = (m) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`);
+
+/** Dirección del Apps Script ya conectado a la hoja. Con esto el panel solo pide la clave (o nada, si está apagada). */
+const URL_FIJA = 'https://script.google.com/macros/s/AKfycbxUCpdI8w4uctD8PLxLzqcstcs8JfihxKcHUowebAib3aVmsu8f-3FfW2XIbyzDEUNi/exec';
 
 let DATOS = null;                       // { ahora, personas, uso: [[fecha, quien, tipo, detalle]] }
 const F = { dias: 30, quien: 'todos', persona: null, pestana: 'resumen' };
@@ -441,7 +447,7 @@ $('conClave').addEventListener('change', verClave);
 // clave === null significa "sin clave"; '' significa que falta escribirla
 $('form').addEventListener('submit', (e) => { e.preventDefault(); entrar($('url').value.trim(), $('conClave').checked ? $('clave').value.trim() : null); });
 $('demo').addEventListener('click', () => { DATOS = ejemplo(); mostrar(); });
-$('salir').addEventListener('click', () => { guardar.set('ola-panel', null); DATOS = null; $('panel').hidden = true; $('puerta').hidden = false; $('error').textContent = ''; });
+$('salir').addEventListener('click', () => { guardar.set('ola-panel', null); DATOS = null; $('panel').hidden = true; $('puerta').hidden = false; $('error').textContent = ''; if (URL_FIJA) $('url').value = URL_FIJA; });
 $('recargar').addEventListener('click', () => { const g = JSON.parse(guardar.get('ola-panel') || 'null'); if (DATOS?.ejemplo || !g) { DATOS = ejemplo(); pintar(); } else entrar(g.url, g.clave, true); });
 
 const tip = $('tip');
@@ -458,8 +464,10 @@ document.addEventListener('pointerleave', () => { tip.style.opacity = 0; });
 /* ---------- Arranque ---------- */
 (() => {
   const g = JSON.parse(guardar.get('ola-panel') || 'null');
+  if (URL_FIJA) { $('url').value = URL_FIJA; $('zonaUrl').hidden = true; $('notaFija').hidden = false; }
   if (g?.url) { $('url').value = g.url; $('conClave').checked = g.clave != null; verClave(); entrar(g.url, g.clave, true); }
-  else { DATOS = ejemplo(); mostrar(); } // sin conexión guardada se abre de una vez con datos de ejemplo
+  else if (/[?#&]demo/.test(location.href) || !URL_FIJA) { DATOS = ejemplo(); mostrar(); }
+  else entrar(URL_FIJA, null, true).then(() => { if (!DATOS) $('error').textContent = ''; }); // primero sin clave, por si está apagada; si la pide, queda el formulario
 })();
 </script>
 </body>
