@@ -136,11 +136,11 @@
     <div class="mini">Mutualismo Cognitivo</div>
     <h1>Panel de uso de Ola</h1>
     <p class="nota">Cuánto usan las apps Nicolás y sus estudiantes, y qué hacen en ellas.</p>
-    <form id="form">
+    <form id="form" novalidate>
       <label for="url">Dirección del Apps Script (termina en /exec)</label>
-      <input id="url" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+      <input id="url" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
       <label for="clave">Clave del panel (CLAVE_PANEL, en la pestaña Config de la hoja)</label>
-      <input id="clave" type="password" autocomplete="off">
+      <input id="clave" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       <button class="boton lleno" type="submit">Entrar</button>
     </form>
     <button class="boton" id="demo" type="button">Ver con datos de ejemplo</button>
@@ -292,10 +292,23 @@ function ejemplo() {
 }
 
 /* ---------- Conexión ---------- */
+/** Error con un mensaje que se puede mostrar tal cual. */
+const fallo = (m) => Object.assign(new Error(m), { claro: true });
 async function pedir(url, clave) {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'panel', clave }) });
-  const j = await res.json();
-  if (!j.ok) throw new Error(j.error || 'No se pudo leer');
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) throw fallo('La dirección debe ser la del Apps Script: empieza por https://script.google.com/ y termina en /exec. No es la dirección de la hoja de cálculo.');
+  if (!clave) throw fallo('Falta la clave del panel. Está en la pestaña Config de la hoja, en la fila CLAVE_PANEL (aparece después de ejecutar setup con el Code.gs nuevo).');
+  let texto;
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'panel', clave }) });
+    texto = await res.text();
+  } catch { throw fallo('No se pudo conectar. Revisa la conexión y que la dirección /exec esté bien copiada.'); }
+  let j;
+  try { j = JSON.parse(texto); }
+  catch { throw fallo('Esa dirección no respondió como el Apps Script de Ola. Lo más común: la implementación no está publicada con acceso para "Cualquier persona", o la dirección no es la que termina en /exec.'); }
+  if (!j.ok) {
+    if (/Sesi[oó]n requerida|no permitida/i.test(j.error || '')) throw fallo('El Apps Script todavía tiene el código anterior. Pega el Code.gs nuevo, ejecuta setup y publica una nueva versión de la implementación.');
+    throw fallo(j.error || 'No se pudo leer');
+  }
   return j;
 }
 async function entrar(url, clave, callado) {
@@ -303,10 +316,11 @@ async function entrar(url, clave, callado) {
   try {
     DATOS = await pedir(url, clave);
     guardar.set('ola-panel', JSON.stringify({ url, clave }));
+    $('error').textContent = '';
     mostrar();
   } catch (e) {
     $('puerta').hidden = false; $('panel').hidden = true;
-    $('error').textContent = /fetch|network|JSON/i.test(e.message) ? 'No se pudo conectar. Revisa la dirección /exec y que la implementación esté publicada para "Cualquier persona".' : e.message;
+    $('error').textContent = e.claro ? e.message : 'No se pudo abrir el panel. Revisa la dirección /exec y la clave.';
   }
 }
 function mostrar() { $('puerta').hidden = true; $('panel').hidden = false; pintar(); }
