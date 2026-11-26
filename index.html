@@ -114,6 +114,12 @@
   .act time { color: var(--tenue); font-variant-numeric: tabular-nums; font-size: 12.5px; }
   .vacio { color: var(--tenue); padding: 18px 0; text-align: center; font-size: 13.5px; }
 
+  .velo { position: fixed; inset: 0; z-index: 20; background: rgba(10,12,24,.55); display: grid; place-items: center; padding: 18px; }
+  .velo[hidden] { display: none; }
+  .dlg { width: 100%; max-width: 420px; }
+  .dlg label { display: block; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); margin: 14px 0 6px; }
+  .dlg input { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1.5px solid var(--linea); background: var(--fondo); }
+  .fila-b { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   #tip { position: fixed; z-index: 9; pointer-events: none; background: var(--tinta); color: var(--papel); padding: 7px 10px; border-radius: 10px; font-size: 12.5px; line-height: 1.35; max-width: 240px; opacity: 0; transition: opacity .1s; white-space: pre-line; }
 
   /* entrada */
@@ -143,13 +149,11 @@
       <label for="url">Dirección del Apps Script (termina en /exec)</label>
       <input id="url" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
       </div>
-      <p class="nota" id="notaFija" hidden>Conectado a la hoja de Ola. Solo falta la clave del panel.</p>
-      <label class="opcion"><input type="checkbox" id="conClave" checked> <span>Usar clave</span></label>
-      <div id="zonaClave">
-        <label for="clave">Clave del panel (CLAVE_PANEL, en la pestaña Config de la hoja)</label>
+      <p class="nota" id="notaFija" hidden>Este panel tiene clave. Escríbela para entrar.</p>
+      <div id="zonaClave" hidden>
+        <label for="clave">Clave del panel</label>
         <input id="clave" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       </div>
-      <p class="nota" id="notaSinClave" hidden>Sin clave solo entra si en la pestaña Config de la hoja pusiste NO en USAR_CLAVE_PANEL.</p>
       <button class="boton lleno" type="submit">Entrar</button>
     </form>
     <button class="boton" id="demo" type="button">Ver con datos de ejemplo</button>
@@ -165,6 +169,7 @@
         <p class="nota" id="estado"></p>
       </div>
       <button class="boton" id="recargar" type="button">Actualizar</button>
+      <button class="boton" id="botonClave" type="button" hidden>Clave</button>
       <button class="boton" id="salir" type="button">Salir</button>
     </div>
 
@@ -240,6 +245,20 @@
   </div>
 </div>
 <div id="tip" role="status"></div>
+<div id="dlgClave" class="velo" hidden>
+  <div class="tarjeta dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTit">
+    <h2 id="dlgTit">Clave del panel</h2>
+    <p class="nota" id="dlgNota"></p>
+    <div id="dlgActual"><label for="claveActual">Clave actual</label><input id="claveActual" type="password" autocomplete="off"></div>
+    <label for="claveNueva" id="lblNueva">Clave nueva (mínimo 4 caracteres)</label><input id="claveNueva" type="password" autocomplete="new-password">
+    <div class="error" id="dlgError" role="alert"></div>
+    <div class="fila-b">
+      <button class="boton lleno" id="dlgGuardar" type="button">Guardar</button>
+      <button class="boton" id="dlgQuitar" type="button">Quitar clave</button>
+      <button class="boton" id="dlgCerrar" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -308,7 +327,7 @@ function ejemplo() {
 const fallo = (m) => Object.assign(new Error(m), { claro: true });
 async function pedir(url, clave) {
   if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) throw fallo('La dirección debe ser la del Apps Script: empieza por https://script.google.com/ y termina en /exec. No es la dirección de la hoja de cálculo.');
-  if (clave === '') throw fallo('Falta la clave del panel. Está en la pestaña Config de la hoja, en la fila CLAVE_PANEL (aparece después de ejecutar setup con el Code.gs nuevo). Si no quieres usar clave, desmarca "Usar clave".');
+  if (clave === '') throw fallo('Escribe la clave del panel.');
   let texto;
   try {
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'panel', clave: clave || '' }) });
@@ -332,7 +351,8 @@ async function entrar(url, clave, callado) {
     mostrar();
   } catch (e) {
     $('puerta').hidden = false; $('panel').hidden = true;
-    $('error').textContent = e.claro ? e.message : 'No se pudo abrir el panel. Revisa la dirección /exec y la clave.';
+    if (/tiene clave|Clave del panel incorrecta|Demasiados intentos/.test(e.message)) pideClave(true);
+    $('error').textContent = e.claro ? (/tiene clave/.test(e.message) && clave == null ? '' : e.message) : 'No se pudo abrir el panel. Revisa la dirección /exec.';
   }
 }
 function mostrar() { $('puerta').hidden = true; $('panel').hidden = false; pintar(); }
@@ -369,6 +389,9 @@ function pintar() {
   document.querySelectorAll('#rango button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === F.dias)));
   document.querySelectorAll('#quien button').forEach((b) => b.setAttribute('aria-pressed', String(!F.persona && b.dataset.v === F.quien)));
   $('chip').classList.toggle('on', !!F.persona); $('chipNombre').textContent = F.persona ? (per[F.persona]?.nombre || F.persona) : '';
+  $('botonClave').hidden = !!DATOS.ejemplo;
+  $('botonClave').textContent = DATOS.conClave ? 'Clave' : 'Agregar clave';
+  $('salir').hidden = !DATOS.ejemplo && !DATOS.conClave && !!URL_FIJA; // sin clave no hay de qué salir
   $('salir').textContent = DATOS.ejemplo ? 'Conectar mi hoja' : 'Salir';
   $('salir').classList.toggle('lleno', !!DATOS.ejemplo);
   $('estado').textContent = DATOS.ejemplo ? 'Estás viendo datos de ejemplo, no los reales. Para ver los de Nicolás y sus estudiantes, toca "Conectar mi hoja".' : `Actualizado ${cuando(DATOS.ahora)} · ${num(DATOS.uso.length)} registros en los últimos 120 días.`;
@@ -442,12 +465,40 @@ $('chipX').addEventListener('click', () => { F.persona = null; pintar(); });
 const elegirPersona = (tr) => { if (!tr) return; F.persona = F.persona === tr.dataset.id ? null : tr.dataset.id; pintar(); };
 $('personas').addEventListener('click', (e) => elegirPersona(e.target.closest('tr')));
 $('personas').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegirPersona(e.target.closest('tr')); } });
-const verClave = () => { const on = $('conClave').checked; $('zonaClave').hidden = !on; $('notaSinClave').hidden = on; $('error').textContent = ''; };
-$('conClave').addEventListener('change', verClave);
-// clave === null significa "sin clave"; '' significa que falta escribirla
-$('form').addEventListener('submit', (e) => { e.preventDefault(); entrar($('url').value.trim(), $('conClave').checked ? $('clave').value.trim() : null); });
+// La clave solo se pide si el panel la tiene (lo dice el Apps Script). clave === null: entrar sin clave
+const pideClave = (si) => { $('zonaClave').hidden = !si; $('notaFija').hidden = !si || !URL_FIJA; };
+$('form').addEventListener('submit', (e) => { e.preventDefault(); entrar($('url').value.trim(), $('zonaClave').hidden ? null : $('clave').value.trim()); });
 $('demo').addEventListener('click', () => { DATOS = ejemplo(); mostrar(); });
 $('salir').addEventListener('click', () => { guardar.set('ola-panel', null); DATOS = null; $('panel').hidden = true; $('puerta').hidden = false; $('error').textContent = ''; if (URL_FIJA) $('url').value = URL_FIJA; });
+/* ---------- Poner, cambiar o quitar la clave del panel ---------- */
+const abrirClave = () => {
+  const con = !!DATOS?.conClave;
+  $('dlgNota').textContent = con ? 'El panel pide clave al entrar. Puedes cambiarla o quitarla.' : 'Ahora el panel entra sin clave. Si le pones una, se pedirá al abrirlo en cualquier teléfono.';
+  $('dlgActual').hidden = !con; $('dlgQuitar').hidden = !con;
+  $('lblNueva').textContent = con ? 'Clave nueva (mínimo 4 caracteres)' : 'Clave (mínimo 4 caracteres)';
+  $('claveActual').value = ''; $('claveNueva').value = ''; $('dlgError').textContent = '';
+  $('dlgClave').hidden = false; (con ? $('claveActual') : $('claveNueva')).focus();
+};
+async function guardarClave(nueva) {
+  const g = JSON.parse(guardar.get('ola-panel') || 'null') || { url: URL_FIJA };
+  const actual = DATOS?.conClave ? ($('claveActual').value.trim() || g.clave || '') : '';
+  if (nueva && nueva.length < 4) { $('dlgError').textContent = 'La clave debe tener al menos 4 caracteres.'; return; }
+  $('dlgError').textContent = 'Guardando…';
+  try {
+    const res = await fetch(g.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'panelClave', actual, nueva }) });
+    const j = JSON.parse(await res.text());
+    if (!j.ok) throw fallo(j.error || 'No se pudo');
+    guardar.set('ola-panel', JSON.stringify({ url: g.url, clave: nueva || null }));
+    DATOS.conClave = !!nueva; $('dlgClave').hidden = true; pintar();
+  } catch (e) { $('dlgError').textContent = e.claro ? e.message : 'No se pudo guardar. Revisa la conexión.'; }
+}
+$('botonClave').addEventListener('click', abrirClave);
+$('dlgGuardar').addEventListener('click', () => guardarClave($('claveNueva').value.trim()));
+$('dlgQuitar').addEventListener('click', () => guardarClave(''));
+$('dlgCerrar').addEventListener('click', () => { $('dlgClave').hidden = true; });
+$('dlgClave').addEventListener('click', (e) => { if (e.target === $('dlgClave')) $('dlgClave').hidden = true; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('dlgClave').hidden = true; });
+
 $('recargar').addEventListener('click', () => { const g = JSON.parse(guardar.get('ola-panel') || 'null'); if (DATOS?.ejemplo || !g) { DATOS = ejemplo(); pintar(); } else entrar(g.url, g.clave, true); });
 
 const tip = $('tip');
@@ -464,10 +515,10 @@ document.addEventListener('pointerleave', () => { tip.style.opacity = 0; });
 /* ---------- Arranque ---------- */
 (() => {
   const g = JSON.parse(guardar.get('ola-panel') || 'null');
-  if (URL_FIJA) { $('url').value = URL_FIJA; $('zonaUrl').hidden = true; $('notaFija').hidden = false; }
-  if (g?.url) { $('url').value = g.url; $('conClave').checked = g.clave != null; verClave(); entrar(g.url, g.clave, true); }
+  if (URL_FIJA) { $('url').value = URL_FIJA; $('zonaUrl').hidden = true; }
+  if (g?.url) { $('url').value = g.url; entrar(g.url, g.clave ?? null, true); }
   else if (/[?#&]demo/.test(location.href) || !URL_FIJA) { DATOS = ejemplo(); mostrar(); }
-  else entrar(URL_FIJA, null, true).then(() => { if (!DATOS) $('error').textContent = ''; }); // primero sin clave, por si está apagada; si la pide, queda el formulario
+  else entrar(URL_FIJA, null, true); // sin clave; si el panel tiene una, aparece el campo para escribirla
 })();
 </script>
 </body>
